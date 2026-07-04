@@ -1,5 +1,4 @@
 const fs = require("fs");
-const path = require("path");
 const JSZip = require("jszip");
 
 const TEMPLATE_PATH = process.argv[2];
@@ -10,59 +9,68 @@ if (!TEMPLATE_PATH || !OUT_PATH) {
   process.exit(1);
 }
 
+// Front-page text values (plain runs, injected directly — NOT via patchDocument,
+// to keep the buggy ExternalHyperlink path out of the pipeline entirely).
+const NAME = process.env.DOC_NAME || "[Student Full Name]";
+const MATRIC = process.env.DOC_MATRIC || "[Matric Number]";
+const YEARCOURSE = process.env.DOC_YEARCOURSE || "[Year / Programme]";
+const SECTION = process.env.DOC_SECTION || "[Section]";
+const LECTURER = process.env.DOC_LECTURER || "[Lecturer Name]";
+const GITHUB_URL = process.env.DOC_GITHUB || "https://github.com/REPLACE/HealthVault-Secure";
+const YOUTUBE_URL = process.env.DOC_YOUTUBE || "https://youtu.be/REPLACE_VIDEO_ID";
+
+const GH_RID = "rId100";
+const YT_RID = "rId101";
+
+function xmlEscape(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// A plain text run for a front-page value cell.
+function textRun(text) {
+  return `<w:r><w:rPr><w:szCs w:val="24"/></w:rPr><w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r>`;
+}
+
+// A real hyperlink element (blue + underline) referencing a relationship id.
+function hyperlinkRun(rid, url) {
+  return `<w:hyperlink r:id="${rid}" w:history="1"><w:r><w:rPr><w:color w:val="0563C1"/><w:u w:val="single"/><w:szCs w:val="24"/></w:rPr><w:t xml:space="preserve">${xmlEscape(url)}</w:t></w:r></w:hyperlink>`;
+}
+
+function bodyTokenParagraph(token) {
+  return `<w:p><w:r><w:t xml:space="preserve">&lt;&lt;${token}&gt;&gt;</w:t></w:r></w:p>`;
+}
+
 async function main() {
-  const buf = fs.readFileSync(TEMPLATE_PATH);
-  const zip = await JSZip.loadAsync(buf);
+  const zip = await JSZip.loadAsync(fs.readFileSync(TEMPLATE_PATH));
   let xml = await zip.file("word/document.xml").async("string");
 
-  // ---------- 1. Front-page field tokens ----------
-  // Each label (e.g. ">Name<") is immediately followed, in the next table
-  // cell, by an EMPTY paragraph: <w:p ...><w:pPr>...</w:pPr></w:p>
-  // We insert a run containing a <<TOKEN>> placeholder right before that
-  // paragraph's closing </w:p>, using PatchType.PARAGRAPH-friendly syntax.
-  function insertTokenAfterLabel(xmlStr, labelAnchor, token) {
-    const labelIdx = xmlStr.indexOf(labelAnchor);
-    if (labelIdx === -1) throw new Error("Label not found: " + labelAnchor);
-    // find the next paragraph start after the label's own paragraph closes
-    const afterLabelClose = xmlStr.indexOf("</w:p>", labelIdx) + "</w:p>".length;
-    const valueParaStart = xmlStr.indexOf("<w:p ", afterLabelClose);
-    const valueParaEnd = xmlStr.indexOf("</w:p>", valueParaStart);
-    if (valueParaStart === -1 || valueParaEnd === -1) {
-      throw new Error("Could not locate value paragraph for: " + labelAnchor);
-    }
-    const runXml = `<w:r><w:t xml:space="preserve">&lt;&lt;${token}&gt;&gt;</w:t></w:r>`;
-    return {
-      start: valueParaEnd,
-      end: valueParaEnd,
-      insert: runXml,
-    };
-  }
-
-  const frontFields = [
-    [">Name<", "NAME"],
-    [">Matric No.<", "MATRIC"],
-    [">Year / Course<", "YEARCOURSE"],
-    [">Section<", "SECTION"],
-    [">Lecturer Name<", "LECTURER"],
-    [">GitHub Link<", "GITHUB"],
-    [">YouTube Link<", "YOUTUBE"],
-  ];
-
   const edits = [];
-  for (const [anchor, token] of frontFields) {
-    edits.push(insertTokenAfterLabel(xml, anchor, token));
+
+  // ---------- 1. Front-page fields ----------
+  // Each label paragraph is followed by an EMPTY value paragraph in the
+  // next cell. Insert content just before that value paragraph's </w:p>.
+  function insertAfterLabel(labelAnchor, contentXml) {
+    const labelIdx = xml.indexOf(labelAnchor);
+    if (labelIdx === -1) throw new Error("Label not found: " + labelAnchor);
+    const afterLabelClose = xml.indexOf("</w:p>", labelIdx) + "</w:p>".length;
+    const valueParaStart = xml.indexOf("<w:p ", afterLabelClose);
+    const valueParaEnd = xml.indexOf("</w:p>", valueParaStart);
+    if (valueParaStart === -1 || valueParaEnd === -1) throw new Error("value paragraph missing for " + labelAnchor);
+    edits.push({ start: valueParaEnd, end: valueParaEnd, insert: contentXml });
   }
+
+  insertAfterLabel(">Name<", textRun(NAME));
+  insertAfterLabel(">Matric No.<", textRun(MATRIC));
+  insertAfterLabel(">Year / Course<", textRun(YEARCOURSE));
+  insertAfterLabel(">Section<", textRun(SECTION));
+  insertAfterLabel(">Lecturer Name<", textRun(LECTURER));
+  insertAfterLabel(">GitHub Link<", hyperlinkRun(GH_RID, GITHUB_URL));
+  insertAfterLabel(">YouTube Link<", hyperlinkRun(YT_RID, YOUTUBE_URL));
 
   // ---------- 2. Chapter body tokens ----------
-  // Locate every Heading1 paragraph (the 4 chapter titles) plus the
-  // References "Title"-styled paragraph, then replace everything BETWEEN
-  // them with a single minimal paragraph containing a <<TOKEN>>. Because
-  // PatchType.DOCUMENT (FilePatch) replaces the whole paragraph node that
-  // contains the token, the exact styling of this placeholder paragraph
-  // does not matter.
-  function findParagraphSpan(xmlStr, markerIdx) {
-    const start = xmlStr.lastIndexOf("<w:p ", markerIdx);
-    const end = xmlStr.indexOf("</w:p>", markerIdx) + "</w:p>".length;
+  function findParagraphSpan(markerIdx) {
+    const start = xml.lastIndexOf("<w:p ", markerIdx);
+    const end = xml.indexOf("</w:p>", markerIdx) + "</w:p>".length;
     return { start, end };
   }
 
@@ -72,44 +80,44 @@ async function main() {
     let m;
     while ((m = re.exec(xml))) heading1Positions.push(m.index);
   }
-  if (heading1Positions.length !== 4) {
-    throw new Error("Expected 4 Heading1 paragraphs, found " + heading1Positions.length);
-  }
+  if (heading1Positions.length !== 4) throw new Error("Expected 4 Heading1 paragraphs, found " + heading1Positions.length);
 
   const referencesTitleIdx = xml.indexOf(">REFERENCES<");
   if (referencesTitleIdx === -1) throw new Error("REFERENCES title not found");
 
-  const h1Spans = heading1Positions.map((idx) => findParagraphSpan(xml, idx));
-  const refTitleSpan = findParagraphSpan(xml, referencesTitleIdx);
-
-  // Body-level trailing sectPr must be preserved (last child of <w:body>).
+  const h1 = heading1Positions.map(findParagraphSpan);
+  const refSpan = findParagraphSpan(referencesTitleIdx);
   const lastSectPrStart = xml.lastIndexOf("<w:sectPr");
 
-  function bodyTokenParagraph(token) {
-    return `<w:p><w:r><w:t xml:space="preserve">&lt;&lt;${token}&gt;&gt;</w:t></w:r></w:p>`;
-  }
+  edits.push({ start: h1[0].end, end: h1[1].start, insert: bodyTokenParagraph("CH1_BODY") });
+  edits.push({ start: h1[1].end, end: h1[2].start, insert: bodyTokenParagraph("CH2_BODY") });
+  edits.push({ start: h1[2].end, end: h1[3].start, insert: bodyTokenParagraph("CH3_BODY") });
+  edits.push({ start: h1[3].end, end: refSpan.start, insert: bodyTokenParagraph("CH4_BODY") });
+  edits.push({ start: refSpan.end, end: lastSectPrStart, insert: bodyTokenParagraph("REFERENCES_BODY") });
 
-  edits.push({ start: h1Spans[0].end, end: h1Spans[1].start, insert: bodyTokenParagraph("CH1_BODY") });
-  edits.push({ start: h1Spans[1].end, end: h1Spans[2].start, insert: bodyTokenParagraph("CH2_BODY") });
-  edits.push({ start: h1Spans[2].end, end: h1Spans[3].start, insert: bodyTokenParagraph("CH3_BODY") });
-  edits.push({ start: h1Spans[3].end, end: refTitleSpan.start, insert: bodyTokenParagraph("CH4_BODY") });
-  edits.push({ start: refTitleSpan.end, end: lastSectPrStart, insert: bodyTokenParagraph("REFERENCES_BODY") });
-
-  // ---------- Apply all edits in one pass (sorted, non-overlapping) ----------
+  // ---------- Apply edits ----------
   edits.sort((a, b) => a.start - b.start);
   let result = "";
   let cursor = 0;
   for (const e of edits) {
-    result += xml.slice(cursor, e.start);
-    result += e.insert;
+    if (e.start < cursor) throw new Error("Overlapping edit detected");
+    result += xml.slice(cursor, e.start) + e.insert;
     cursor = e.end;
   }
   result += xml.slice(cursor);
-
   zip.file("word/document.xml", result);
+
+  // ---------- 3. Add the two hyperlink relationships to document.xml.rels ----------
+  let rels = await zip.file("word/_rels/document.xml.rels").async("string");
+  const newRels =
+    `<Relationship Id="${GH_RID}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${xmlEscape(GITHUB_URL)}" TargetMode="External"/>` +
+    `<Relationship Id="${YT_RID}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${xmlEscape(YOUTUBE_URL)}" TargetMode="External"/>`;
+  rels = rels.replace("</Relationships>", newRels + "</Relationships>");
+  zip.file("word/_rels/document.xml.rels", rels);
+
   const outBuf = await zip.generateAsync({ type: "nodebuffer" });
   fs.writeFileSync(OUT_PATH, outBuf);
-  console.log("Wrote token-injected template:", OUT_PATH, outBuf.length, "bytes");
+  console.log("Wrote token-injected template with real hyperlinks:", OUT_PATH, outBuf.length, "bytes");
 }
 
 main().catch((err) => {
