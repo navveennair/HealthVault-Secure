@@ -1,0 +1,10 @@
+=== LEGACY: AES-128-ECB (crypto_vault.php, Hidden Flaw F) ===
+Plaintext block 1 == block 2: true
+Ciphertext block 1 (hex): 3d4ac7fb029cd158137eff97470619cf
+Ciphertext block 2 (hex): 3d4ac7fb029cd158137eff97470619cf
+Ciphertext blocks identical: TRUE (leak)  <-- pattern leakage
+
+=== SECURE: AES-256-GCM (VaultCipher, refactored) ===
+Envelope 1 (base64): xe3bTwypufmb26JshiqnYb5ocSkvieqavVmnp2FcCJWwU+kAEhiwYi+9fW0f3m5bF0i7oeZyeZmGjIA0
+Envelope 2 (base64): A91nPT21WRIv9aUa0Bx1G7k+OVRerb5LSSdeznmQVIrJoAW3dMlU2NB31nO3DQfUKTvJtwLi+33xNt6r
+Envelopes identical for identical plaintext: FALSE (secure)  <-- no pattern leakage (fresh IV each call)

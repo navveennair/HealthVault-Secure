@@ -1,0 +1,10 @@
+=== LEGACY: raw string concatenation (search.php, Hidden Flaw A) ===
+SELECT id, name, illness_history FROM patient_records WHERE name LIKE '%x' UNION SELECT id, username, auth_key_hash FROM staff_credentials -- %'
+-> The interpreter parses this as TWO UNIONed SELECT statements. The
+   attacker-supplied text became part of the SQL command grammar.
+
+=== SECURE: PDO prepared statement (PatientSearchService) ===
+Compiled statement text: SELECT id, name, illness_history FROM patient_records WHERE name LIKE :keyword
+Bound parameter (:keyword), treated purely as data: '%x' UNION SELECT id, username, auth_key_hash FROM staff_credentials -- %'
+
+Rows returned: 0  <-- query structure never changed; payload matched nothing

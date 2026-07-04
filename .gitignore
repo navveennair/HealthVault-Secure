@@ -1,0 +1,28 @@
+# Secrets — never commit real environment values
+.env
+.env.*
+!.env.example
+
+# Dependency directories
+/vendor/
+/node_modules/
+
+# Composer
+composer.phar
+
+# PHPUnit
+.phpunit.result.cache
+.phpunit.cache/
+/build/
+/coverage/
+
+# Local runtime artifacts
+*.sqlite
+*.sqlite3
+/db/*.local.sql
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

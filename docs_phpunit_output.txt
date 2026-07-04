@@ -1,0 +1,30 @@
+PHPUnit 11.5.55 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.3.32
+Configuration: C:\Users\NAVVEEN\Downloads\HealthVault-Secure\phpunit.xml
+
+..............                                                    14 / 14 (100%)
+
+Time: 00:00.042, Memory: 8.00 MB
+
+Auth Service (HealthVault\Tests\AuthService)
+ ✔ Hash then verify succeeds for correct key
+ ✔ Verify fails for incorrect key
+ ✔ Multi byte input is bounded by character count not byte count
+ ✔ Multi byte input exceeding character bound is rejected
+ ✔ Legacy md 5 hash is flagged as needing rehash
+
+Patient Search Service (HealthVault\Tests\PatientSearchService)
+ ✔ Search returns matching records for ordinary keyword
+ ✔ Classic sql injection payload is treated as literal data
+ ✔ Stacked query injection payload does not alter result set
+
+Vault Cipher (HealthVault\Tests\VaultCipher)
+ ✔ Encrypt decrypt round trip returns original plaintext
+ ✔ Identical plaintext produces different envelopes
+ ✔ Envelope contains expected iv and tag lengths
+ ✔ Tampered ciphertext throws integrity exception
+ ✔ Malformed envelope throws integrity exception
+ ✔ Rejects key that is not exactly 32 bytes after decoding
+
+OK (14 tests, 20 assertions)

