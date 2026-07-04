@@ -1,4 +1,5 @@
 const fs = require("fs");
+const JSZip = require("jszip");
 const { patchDocument, PatchType } = require("docx");
 
 const { ch1 } = require("./build");
@@ -35,6 +36,22 @@ async function main() {
       REFERENCES_BODY: { type: PatchType.DOCUMENT, children: references.slice(1) },
     },
   });
+
+  // Safety net: ensure the content type is the .docx document type, not the
+  // .dotx template type, even if patchDocument round-tripped the original.
+  const zip = await JSZip.loadAsync(doc);
+  let ct = await zip.file("[Content_Types].xml").async("string");
+  if (ct.includes("wordprocessingml.template.main+xml")) {
+    ct = ct.replace(
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"
+    );
+    zip.file("[Content_Types].xml", ct);
+    const fixed = await zip.generateAsync({ type: "nodebuffer" });
+    fs.writeFileSync(outPath, fixed);
+    console.log("Wrote patched document (content type corrected):", outPath, fixed.length, "bytes");
+    return;
+  }
 
   fs.writeFileSync(outPath, doc);
   console.log("Wrote patched document:", outPath, doc.length, "bytes");

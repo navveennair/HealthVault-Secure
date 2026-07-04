@@ -115,6 +115,20 @@ async function main() {
   rels = rels.replace("</Relationships>", newRels + "</Relationships>");
   zip.file("word/_rels/document.xml.rels", rels);
 
+  // ---------- 4. Convert template content type to document content type ----------
+  // The source is a .dotx TEMPLATE: [Content_Types].xml declares word/document.xml
+  // as "...wordprocessingml.template.main+xml". A .docx MUST declare it as
+  // "...wordprocessingml.document.main+xml"; otherwise Word rejects the whole
+  // package as corrupt regardless of how valid the XML is.
+  let contentTypes = await zip.file("[Content_Types].xml").async("string");
+  if (!contentTypes.includes("wordprocessingml.document.main+xml")) {
+    contentTypes = contentTypes.replace(
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"
+    );
+    zip.file("[Content_Types].xml", contentTypes);
+  }
+
   const outBuf = await zip.generateAsync({ type: "nodebuffer" });
   fs.writeFileSync(OUT_PATH, outBuf);
   console.log("Wrote token-injected template with real hyperlinks:", OUT_PATH, outBuf.length, "bytes");
